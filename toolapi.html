@@ -937,27 +937,20 @@
                     // Store response headers for copy function
                     window.currentResponseHeaders = responseHeadersText;
 
-                    // Display request headers
-                    let requestHeadersHtml =
-                        '<div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border-radius: 6px; font-size: 13px;">';
-                    requestHeadersHtml +=
-                        "<strong>⚠️ Lưu ý:</strong> Do hạn chế bảo mật của trình duyệt, không thể đọc chính xác 100% headers thực tế. ";
-                    requestHeadersHtml +=
-                        "Dưới đây là headers bạn đã cấu hình + headers ước tính mà trình duyệt thêm.</div>";
-
-                    requestHeadersHtml +=
-                        '<div style="margin-top: 15px;"><strong style="color: #ff6b6b;">🎯 Request URL:</strong></div>';
+                    // Display request headers - CHỈ HIỂN THỊ HEADERS NGƯỜI DÙNG CẤU HÌNH
+                    let requestHeadersHtml = '';
+                    
+                    // Request URL
+                    requestHeadersHtml += '<div style="margin-bottom: 15px;"><strong style="color: #ff6b6b;">🎯 Request URL:</strong></div>';
                     requestHeadersHtml += `<div style="background: #f8f9fa; padding: 10px; border-radius: 4px; word-break: break-all; font-family: monospace;">${method} ${finalUrl}</div>`;
 
-                    // Build request headers text for copy
+                    // Build request headers text for copy - CHỈ HEADERS NGƯỜI DÙNG CẤU HÌNH
                     let requestHeadersText = `Request URL: ${method} ${finalUrl}\n\n`;
-                    requestHeadersText += `=== Headers bạn đã cấu hình ===\n`;
+                    requestHeadersText += `=== Request Headers ===\n`;
 
                     // Generate cURL command
                     let curlCommand = `curl -X ${method} '${finalUrl}'`;
-                    for (const [key, value] of Object.entries(
-                        options.headers,
-                    )) {
+                    for (const [key, value] of Object.entries(options.headers)) {
                         curlCommand += ` \\\n  -H '${key}: ${value}'`;
                         requestHeadersText += `${key}: ${value}\n`;
                     }
@@ -965,65 +958,25 @@
                         curlCommand += ` \\\n  -d '${options.body.replace(/'/g, "'\\''")}'`;
                     }
 
-                    requestHeadersText += `\n=== Headers trình duyệt tự động thêm (ước tính) ===\n`;
-                    requestHeadersText += `User-Agent: ${navigator.userAgent}\n`;
-                    requestHeadersText += `Accept: */*\n`;
-                    requestHeadersText += `Accept-Language: ${navigator.language || "en-US,en;q=0.9"}\n`;
-                    requestHeadersText += `Accept-Encoding: gzip, deflate, br\n`;
-                    requestHeadersText += `Connection: keep-alive\n`;
-
-                    if (finalUrl.startsWith("http")) {
-                        requestHeadersText += `Origin: ${window.location.origin}\n`;
-                        requestHeadersText += `Referer: ${window.location.href}\n`;
-                    }
-
-                    if (method !== "GET" && method !== "HEAD" && options.body) {
-                        requestHeadersText += `Content-Length: ${new Blob([options.body]).size} bytes\n`;
-                    }
-
                     // Store for copy function
                     window.currentRequestHeaders = requestHeadersText;
 
-                    requestHeadersHtml +=
-                        '<div style="margin-top: 15px;"><strong style="color: #ff6b6b;">🔧 cURL Command:</strong> <button onclick="copyCurl(this)" style="margin-left: 10px; padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">📋 Copy</button></div>';
+                    // cURL Command
+                    requestHeadersHtml += '<div style="margin-top: 15px;"><strong style="color: #ff6b6b;">🔧 cURL Command:</strong> <button onclick="copyCurl(this)" style="margin-left: 10px; padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">📋 Copy</button></div>';
                     requestHeadersHtml += `<div style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; word-break: break-all; font-family: monospace; font-size: 12px; overflow-x: auto;"><pre style="margin: 0; white-space: pre-wrap;">${escapeHtml(curlCommand)}</pre></div>`;
 
-                    requestHeadersHtml +=
-                        '<div style="margin-top: 15px;"><strong style="color: #667eea;">📤 Headers bạn đã cấu hình:</strong></div>';
+                    // Headers đã cấu hình
+                    requestHeadersHtml += '<div style="margin-top: 15px;"><strong style="color: #667eea;">📤 Request Headers:</strong></div>';
                     let hasCustomHeaders = false;
-                    for (const [key, value] of Object.entries(
-                        options.headers,
-                    )) {
+                    for (const [key, value] of Object.entries(options.headers)) {
                         requestHeadersHtml += `<div>✓ <strong>${key}:</strong> ${value}</div>`;
                         hasCustomHeaders = true;
                     }
                     if (!hasCustomHeaders) {
-                        requestHeadersHtml +=
-                            '<div style="color: #999; font-style: italic;">Không có headers tùy chỉnh</div>';
+                        requestHeadersHtml += '<div style="color: #999; font-style: italic;">Không có headers tùy chỉnh</div>';
                     }
 
-                    requestHeadersHtml +=
-                        '<div style="margin-top: 15px;"><strong style="color: #2ed573;">🌐 Headers trình duyệt tự động thêm (ước tính):</strong></div>';
-                    requestHeadersHtml += `<div>• <strong>User-Agent:</strong> ${navigator.userAgent}</div>`;
-                    requestHeadersHtml += `<div>• <strong>Accept:</strong> */*</div>`;
-                    requestHeadersHtml += `<div>• <strong>Accept-Language:</strong> ${navigator.language || "en-US,en;q=0.9"}</div>`;
-                    requestHeadersHtml += `<div>• <strong>Accept-Encoding:</strong> gzip, deflate, br</div>`;
-                    requestHeadersHtml += `<div>• <strong>Connection:</strong> keep-alive</div>`;
-
-                    if (finalUrl.startsWith("http")) {
-                        requestHeadersHtml += `<div>• <strong>Origin:</strong> ${window.location.origin}</div>`;
-                        requestHeadersHtml += `<div>• <strong>Referer:</strong> ${window.location.href}</div>`;
-                    }
-
-                    if (method !== "GET" && method !== "HEAD") {
-                        requestHeadersHtml += `<div>• <strong>Content-Length:</strong> ${options.body ? new Blob([options.body]).size : 0} bytes</div>`;
-                    }
-
-                    requestHeadersHtml +=
-                        '<div style="margin-top: 10px; font-size: 12px; color: #666; font-style: italic;">💡 Headers được đánh dấu • là ước tính, giá trị thực tế có thể khác một chút</div>';
-
-                    document.getElementById("requestHeaders").innerHTML =
-                        requestHeadersHtml;
+                    document.getElementById("requestHeaders").innerHTML = requestHeadersHtml;
 
                     // Store curl command for copy function
                     window.currentCurlCommand = curlCommand;
@@ -1042,7 +995,7 @@ Một số nguyên nhân có thể:
 - CORS policy chặn request (nếu gọi từ domain khác)
 - Kết nối mạng bị gián đoạn</pre>`;
 
-                    // Display request headers even on error
+                    // Display request headers even on error - CHỈ HEADERS NGƯỜI DÙNG CẤU HÌNH
                     const params = getParams();
                     const finalUrl =
                         Object.keys(params).length > 0
@@ -1065,39 +1018,31 @@ Một số nguyên nhân có thể:
                         }
                     }
 
-                    let requestHeadersHtml =
-                        '<div style="margin-bottom: 15px; padding: 10px; background: #ffe0e0; border-radius: 6px; font-size: 13px;">';
-                    requestHeadersHtml +=
-                        "<strong>❌ Request bị lỗi!</strong> Nhưng đây là thông tin request đã được cấu hình để gửi.</div>";
+                    let requestHeadersHtml = '<div style="margin-bottom: 15px; padding: 10px; background: #ffe0e0; border-radius: 6px; font-size: 13px;">';
+                    requestHeadersHtml += '<strong>❌ Request bị lỗi!</strong> Nhưng đây là thông tin request đã được cấu hình để gửi.</div>';
 
-                    requestHeadersHtml +=
-                        '<div style="margin-top: 15px;"><strong style="color: #ff6b6b;">🎯 Request URL:</strong></div>';
+                    requestHeadersHtml += '<div style="margin-top: 15px;"><strong style="color: #ff6b6b;">🎯 Request URL:</strong></div>';
                     requestHeadersHtml += `<div style="background: #f8f9fa; padding: 10px; border-radius: 4px; word-break: break-all; font-family: monospace;">${method} ${finalUrl}</div>`;
 
                     // Build request headers text for copy
                     let requestHeadersText = `Request URL: ${method} ${finalUrl}\n\n`;
-                    requestHeadersText += `=== Headers đã cấu hình ===\n`;
+                    requestHeadersText += `=== Request Headers ===\n`;
 
-                    requestHeadersHtml +=
-                        '<div style="margin-top: 15px;"><strong style="color: #667eea;">📤 Headers đã cấu hình:</strong></div>';
+                    requestHeadersHtml += '<div style="margin-top: 15px;"><strong style="color: #667eea;">📤 Request Headers:</strong></div>';
                     let hasCustomHeaders = false;
-                    for (const [key, value] of Object.entries(
-                        options.headers,
-                    )) {
+                    for (const [key, value] of Object.entries(options.headers)) {
                         requestHeadersHtml += `<div>✓ <strong>${key}:</strong> ${value}</div>`;
                         requestHeadersText += `${key}: ${value}\n`;
                         hasCustomHeaders = true;
                     }
                     if (!hasCustomHeaders) {
-                        requestHeadersHtml +=
-                            '<div style="color: #999; font-style: italic;">Không có headers tùy chỉnh</div>';
+                        requestHeadersHtml += '<div style="color: #999; font-style: italic;">Không có headers tùy chỉnh</div>';
                     }
 
                     // Store for copy function
                     window.currentRequestHeaders = requestHeadersText;
 
-                    document.getElementById("requestHeaders").innerHTML =
-                        requestHeadersHtml;
+                    document.getElementById("requestHeaders").innerHTML = requestHeadersHtml;
                 } finally {
                     sendBtn.disabled = false;
                     sendBtn.textContent = "Gửi";
