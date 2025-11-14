@@ -1216,6 +1216,7 @@ Một số nguyên nhân có thể:
                     url: "",
                     headers: {},
                     body: "",
+                    params: {}
                 };
 
                 // Extract method
@@ -1233,8 +1234,21 @@ Một số nguyên nhân có thể:
                     /curl\s+['"]([^'"]+)['"]|curl\s+(\S+)/,
                 );
                 if (urlMatch) {
-                    result.url = urlMatch[1] || urlMatch[2];
-                    result.url = result.url.replace(/^['"]|['"]$/g, "");
+                    let fullUrl = urlMatch[1] || urlMatch[2];
+                    fullUrl = fullUrl.replace(/^['"]|['"]$/g, "");
+                    
+                    // Split URL and query params
+                    try {
+                        const urlObj = new URL(fullUrl);
+                        result.url = urlObj.origin + urlObj.pathname;
+                        
+                        // Extract query params
+                        urlObj.searchParams.forEach((value, key) => {
+                            result.params[key] = value;
+                        });
+                    } catch (e) {
+                        result.url = fullUrl;
+                    }
                 }
 
                 // Extract headers
@@ -1265,56 +1279,88 @@ Một số nguyên nhân có thể:
                     url: "",
                     headers: {},
                     body: "",
+                    params: {}
                 };
 
                 try {
-                    // Extract URL
+                    // Extract URL - handle both single and double quotes
                     const urlMatch = fetchCommand.match(
-                        /fetch\s*\(\s*['"]([^'"]+)['"]/,
+                        /fetch\s*\(\s*["']([^"']+)["']/,
                     );
                     if (urlMatch) {
-                        result.url = urlMatch[1];
+                        let fullUrl = urlMatch[1];
+                        
+                        // Split URL and query params
+                        try {
+                            const urlObj = new URL(fullUrl);
+                            result.url = urlObj.origin + urlObj.pathname;
+                            
+                            // Extract query params
+                            urlObj.searchParams.forEach((value, key) => {
+                                result.params[key] = value;
+                            });
+                        } catch (e) {
+                            result.url = fullUrl;
+                        }
                     }
 
                     // Extract method
                     const methodMatch = fetchCommand.match(
-                        /method\s*:\s*['"](\w+)['"]/i,
+                        /["']method["']\s*:\s*["'](\w+)["']/i,
                     );
                     if (methodMatch) {
                         result.method = methodMatch[1].toUpperCase();
                     }
 
-                    // Extract headers - handle both single line and multi-line
+                    // Extract headers - improved parsing for Chrome DevTools format
                     const headersMatch = fetchCommand.match(
-                        /headers\s*:\s*({[^}]+})/s,
+                        /["']headers["']\s*:\s*\{([^}]+)\}/s,
                     );
                     if (headersMatch) {
                         const headersStr = headersMatch[1];
-                        const headerRegex =
-                            /['"]([^'"]+)['"]\s*:\s*['"]([^'"]+)['"]/g;
+                        // Match both "key": "value" and 'key': 'value'
+                        const headerRegex = /["']([^"']+)["']\s*:\s*["']([^"']*)["']/g;
                         let headerMatch;
                         while (
-                            (headerMatch = headerRegex.exec(headersStr)) !==
-                            null
+                            (headerMatch = headerRegex.exec(headersStr)) !== null
                         ) {
                             result.headers[headerMatch[1]] = headerMatch[2];
                         }
                     }
 
-                    // Extract body
-                    const bodyMatch =
-                        fetchCommand.match(/body\s*:\s*['"](.+?)['"]/s) ||
-                        fetchCommand.match(
-                            /body\s*:\s*JSON\.stringify\((.+?)\)/s,
-                        );
+                    // Extract body - handle various formats
+                    // Try JSON.stringify format first
+                    let bodyMatch = fetchCommand.match(
+                        /["']body["']\s*:\s*JSON\.stringify\((.+?)\)\s*[,}]/s,
+                    );
                     if (bodyMatch) {
-                        result.body = bodyMatch[1];
-                        // Try to parse and re-stringify if it's JSON
                         try {
-                            const parsed = JSON.parse(result.body);
+                            // Evaluate the object to get actual JSON
+                            result.body = bodyMatch[1].trim();
+                            // Try to parse and re-stringify for formatting
+                            const parsed = eval('(' + result.body + ')');
                             result.body = JSON.stringify(parsed, null, 2);
                         } catch (e) {
-                            // Keep as is if not valid JSON
+                            result.body = bodyMatch[1].trim();
+                        }
+                    } else {
+                        // Try string body format
+                        bodyMatch = fetchCommand.match(/["']body["']\s*:\s*["'](.+?)["']/s);
+                        if (bodyMatch) {
+                            result.body = bodyMatch[1];
+                            // Try to parse and re-stringify if it's JSON
+                            try {
+                                const parsed = JSON.parse(result.body);
+                                result.body = JSON.stringify(parsed, null, 2);
+                            } catch (e) {
+                                // Keep as is if not valid JSON
+                            }
+                        } else {
+                            // Try null or other values
+                            bodyMatch = fetchCommand.match(/["']body["']\s*:\s*(null|undefined|[^,}]+)/);
+                            if (bodyMatch && bodyMatch[1] !== 'null' && bodyMatch[1] !== 'undefined') {
+                                result.body = bodyMatch[1].trim();
+                            }
                         }
                     }
                 } catch (e) {
@@ -1348,21 +1394,40 @@ Một số nguyên nhân có thể:
                     return;
                 }
 
-                // Populate form
+                // Populate URL (without query params)
                 if (parsed.url) {
                     document.getElementById("url").value = parsed.url;
                 }
 
+                // Populate method
                 if (parsed.method) {
                     document.getElementById("method").value = parsed.method;
                 }
 
-                // Clear existing headers
-                const headersContainer =
-                    document.getElementById("headersContainer");
+                // Clear and populate params
+                const paramsContainer = document.getElementById("paramsContainer");
+                paramsContainer.innerHTML = "";
+
+                if (Object.keys(parsed.params).length > 0) {
+                    for (const [key, value] of Object.entries(parsed.params)) {
+                        const row = document.createElement("div");
+                        row.className = "param-row";
+                        row.innerHTML = `
+                        <input type="text" placeholder="Key" class="param-key" value="${escapeHtml(key)}">
+                        <input type="text" placeholder="Value" class="param-value" value="${escapeHtml(value)}">
+                        <button class="remove-btn" onclick="removeParamRow(this)">Xóa</button>
+                    `;
+                        paramsContainer.appendChild(row);
+                    }
+                } else {
+                    // Add one empty row if no params
+                    addParamRow();
+                }
+
+                // Clear and populate headers
+                const headersContainer = document.getElementById("headersContainer");
                 headersContainer.innerHTML = "";
 
-                // Add parsed headers
                 if (Object.keys(parsed.headers).length > 0) {
                     for (const [key, value] of Object.entries(parsed.headers)) {
                         const row = document.createElement("div");
@@ -1386,18 +1451,44 @@ Một số nguyên nhân có thể:
 
                 // Switch to appropriate tab
                 if (parsed.body) {
-                    switchTab("body");
-                    document.querySelectorAll(".tabs .tab")[2].click();
+                    // Switch to body tab
+                    const tabs = document.querySelectorAll(".tabs .tab");
+                    tabs.forEach(t => t.classList.remove("active"));
+                    tabs[2].classList.add("active");
+                    
+                    const contents = document.querySelectorAll(".tab-content");
+                    contents.forEach(c => c.classList.remove("active"));
+                    document.getElementById("body").classList.add("active");
                 } else if (Object.keys(parsed.headers).length > 0) {
-                    switchTab("headers");
-                    document.querySelectorAll(".tabs .tab")[1].click();
+                    // Switch to headers tab
+                    const tabs = document.querySelectorAll(".tabs .tab");
+                    tabs.forEach(t => t.classList.remove("active"));
+                    tabs[1].classList.add("active");
+                    
+                    const contents = document.querySelectorAll(".tab-content");
+                    contents.forEach(c => c.classList.remove("active"));
+                    document.getElementById("headers").classList.add("active");
+                } else if (Object.keys(parsed.params).length > 0) {
+                    // Stay on params tab (already active)
                 }
 
                 // Hide import section
                 document.getElementById("importSection").style.display = "none";
                 document.getElementById("toggleImportBtn").textContent = "Hiện";
 
-                //alert('✓ Đã import thành công! Kiểm tra lại thông tin và nhấn Gửi.');
+                // Show success message
+                const importInfo = [];
+                if (Object.keys(parsed.params).length > 0) {
+                    importInfo.push(`${Object.keys(parsed.params).length} params`);
+                }
+                if (Object.keys(parsed.headers).length > 0) {
+                    importInfo.push(`${Object.keys(parsed.headers).length} headers`);
+                }
+                if (parsed.body) {
+                    importInfo.push("body");
+                }
+                
+                alert(`✓ Import thành công!\n${parsed.method} ${parsed.url}\n${importInfo.join(', ')}`);
             }
 
             // Allow Enter key to send request
