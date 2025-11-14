@@ -317,6 +317,24 @@
                 margin-top: 15px;
             }
 
+            .warning-message {
+                background: #fff3cd;
+                color: #856404;
+                padding: 15px;
+                border-radius: 6px;
+                margin-bottom: 15px;
+                border-left: 4px solid #ffc107;
+            }
+
+            .cors-warning {
+                background: #ffe0e0;
+                color: #721c24;
+                padding: 15px;
+                border-radius: 6px;
+                margin-bottom: 15px;
+                border-left: 4px solid #ff4757;
+            }
+
             pre {
                 margin: 0;
                 white-space: pre-wrap;
@@ -334,6 +352,9 @@
             <div class="content">
                 <div class="request-section">
                     <h2 style="margin-bottom: 20px; color: #333">Request</h2>
+
+                    <!-- CORS Warning sẽ được hiển thị ở đây -->
+                    <div id="corsWarning" style="display: none;"></div>
 
                     <div
                         style="
@@ -420,7 +441,7 @@
                     </div>
 
                     <div class="request-line">
-                        <select class="method-select" id="method">
+                        <select class="method-select" id="method" onchange="checkCorsWarnings()">
                             <option value="GET">GET</option>
                             <option value="POST">POST</option>
                             <option value="PUT">PUT</option>
@@ -434,6 +455,7 @@
                             class="url-input"
                             id="url"
                             placeholder="Nhập URL (ví dụ: https://jsonplaceholder.typicode.com/posts/1)"
+                            oninput="checkCorsWarnings()"
                         />
                         <button
                             class="send-btn"
@@ -549,15 +571,17 @@
                                     type="text"
                                     placeholder="Header Key"
                                     class="header-key"
+                                    oninput="checkCorsWarnings()"
                                 />
                                 <input
                                     type="text"
                                     placeholder="Header Value"
                                     class="header-value"
+                                    oninput="checkCorsWarnings()"
                                 />
                                 <button
                                     class="remove-btn"
-                                    onclick="removeHeaderRow(this)"
+                                    onclick="removeHeaderRow(this); checkCorsWarnings();"
                                 >
                                     Xóa
                                 </button>
@@ -573,6 +597,7 @@
                             class="body-textarea"
                             id="bodyContent"
                             placeholder='Nhập JSON body (ví dụ: {"title": "test", "body": "content", "userId": 1})'
+                            oninput="checkCorsWarnings()"
                         ></textarea>
                     </div>
                 </div>
@@ -683,6 +708,103 @@
         </div>
 
         <script>
+            // Headers that trigger CORS preflight
+            const CORS_UNSAFE_HEADERS = [
+                'authorization',
+                'x-api-key',
+                'x-requested-with',
+                'x-custom-header',
+                'x-auth-token',
+            ];
+
+            const CORS_SAFE_CONTENT_TYPES = [
+                'application/x-www-form-urlencoded',
+                'multipart/form-data',
+                'text/plain'
+            ];
+
+            function checkCorsWarnings() {
+                const url = document.getElementById("url").value.trim();
+                const method = document.getElementById("method").value;
+                const body = document.getElementById("bodyContent").value.trim();
+                const headers = getHeaders();
+                
+                const warningDiv = document.getElementById("corsWarning");
+                const warnings = [];
+
+                // Check if cross-origin
+                if (url) {
+                    try {
+                        const targetUrl = new URL(url);
+                        const currentOrigin = window.location.origin;
+                        
+                        if (targetUrl.origin !== currentOrigin) {
+                            // Check for CORS-triggering headers
+                            const corsHeaders = [];
+                            for (const [key, value] of Object.entries(headers)) {
+                                const lowerKey = key.toLowerCase();
+                                
+                                // Check unsafe headers
+                                if (CORS_UNSAFE_HEADERS.includes(lowerKey)) {
+                                    corsHeaders.push(key);
+                                }
+                                
+                                // Check Content-Type
+                                if (lowerKey === 'content-type') {
+                                    const contentType = value.toLowerCase().split(';')[0].trim();
+                                    if (!CORS_SAFE_CONTENT_TYPES.includes(contentType)) {
+                                        corsHeaders.push(`${key} (${contentType})`);
+                                    }
+                                }
+                                
+                                // Any custom header (X-*)
+                                if (lowerKey.startsWith('x-') && !CORS_UNSAFE_HEADERS.includes(lowerKey)) {
+                                    corsHeaders.push(key);
+                                }
+                            }
+
+                            // Check method
+                            if (!['GET', 'POST', 'HEAD'].includes(method)) {
+                                warnings.push(`⚠️ Method <code>${method}</code> sẽ trigger CORS preflight`);
+                            }
+
+                            // Check body with POST
+                            if (method === 'POST' && body && !headers['Content-Type']) {
+                                warnings.push(`⚠️ POST với body nhưng không có Content-Type, trình duyệt sẽ tự thêm <code>application/json</code> → trigger CORS`);
+                            }
+
+                            if (corsHeaders.length > 0) {
+                                warnings.push(`🚨 Các headers này sẽ trigger CORS preflight: <strong>${corsHeaders.join(', ')}</strong>`);
+                            }
+
+                            if (warnings.length > 0) {
+                                warningDiv.innerHTML = `
+                                    <div class="cors-warning">
+                                        <div style="font-weight: 600; margin-bottom: 10px;">⛔ CẢNH BÁO CORS</div>
+                                        ${warnings.map(w => `<div style="margin-bottom: 8px;">• ${w}</div>`).join('')}
+                                        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #f5c6cb;">
+                                            <strong>Giải pháp:</strong>
+                                            <ul style="margin: 8px 0 0 20px; line-height: 1.8;">
+                                                <li>✅ Backend phải có header: <code>Access-Control-Allow-Origin</code></li>
+                                                <li>✅ Dùng browser extension: <a href="https://chrome.google.com/webstore/detail/allow-cors-access-control/lhobafahddgcelffkeicbaginigeejlf" target="_blank" style="color: #721c24; text-decoration: underline;">Allow CORS</a></li>
+                                                <li>✅ Test qua Postman/Insomnia (không bị CORS)</li>
+                                                <li>✅ Dùng proxy server để bypass CORS</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                `;
+                                warningDiv.style.display = 'block';
+                                return;
+                            }
+                        }
+                    } catch (e) {
+                        // Invalid URL, ignore
+                    }
+                }
+
+                warningDiv.style.display = 'none';
+            }
+
             function switchTab(tabName) {
                 document.querySelectorAll(".tabs .tab").forEach((tab) => {
                     tab.classList.remove("active");
@@ -717,9 +839,9 @@
                 const row = document.createElement("div");
                 row.className = "header-row";
                 row.innerHTML = `
-                <input type="text" placeholder="Header Key" class="header-key">
-                <input type="text" placeholder="Header Value" class="header-value">
-                <button class="remove-btn" onclick="removeHeaderRow(this)">Xóa</button>
+                <input type="text" placeholder="Header Key" class="header-key" oninput="checkCorsWarnings()">
+                <input type="text" placeholder="Header Value" class="header-value" oninput="checkCorsWarnings()">
+                <button class="remove-btn" onclick="removeHeaderRow(this); checkCorsWarnings();">Xóa</button>
             `;
                 container.appendChild(row);
             }
@@ -751,15 +873,16 @@
                     const row = document.createElement("div");
                     row.className = "header-row";
                     row.innerHTML = `
-                    <input type="text" placeholder="Header Key" class="header-key" value="${key}">
-                    <input type="text" placeholder="Header Value" class="header-value" value="${val}">
-                    <button class="remove-btn" onclick="removeHeaderRow(this)">Xóa</button>
+                    <input type="text" placeholder="Header Key" class="header-key" value="${key}" oninput="checkCorsWarnings()">
+                    <input type="text" placeholder="Header Value" class="header-value" value="${val}" oninput="checkCorsWarnings()">
+                    <button class="remove-btn" onclick="removeHeaderRow(this); checkCorsWarnings();">Xóa</button>
                 `;
                     container.appendChild(row);
                 }
 
                 // Reset select
                 select.selectedIndex = 0;
+                checkCorsWarnings();
             }
 
             function removeHeaderRow(btn) {
@@ -937,14 +1060,12 @@
                     // Store response headers for copy function
                     window.currentResponseHeaders = responseHeadersText;
 
-                    // Display request headers - CHỈ HIỂN THỊ HEADERS NGƯỜI DÙNG CẤU HÌNH
+                    // Display request headers
                     let requestHeadersHtml = '';
                     
-                    // Request URL
                     requestHeadersHtml += '<div style="margin-bottom: 15px;"><strong style="color: #ff6b6b;">🎯 Request URL:</strong></div>';
                     requestHeadersHtml += `<div style="background: #f8f9fa; padding: 10px; border-radius: 4px; word-break: break-all; font-family: monospace;">${method} ${finalUrl}</div>`;
 
-                    // Build request headers text for copy - CHỈ HEADERS NGƯỜI DÙNG CẤU HÌNH
                     let requestHeadersText = `Request URL: ${method} ${finalUrl}\n\n`;
                     requestHeadersText += `=== Request Headers ===\n`;
 
@@ -958,14 +1079,11 @@
                         curlCommand += ` \\\n  -d '${options.body.replace(/'/g, "'\\''")}'`;
                     }
 
-                    // Store for copy function
                     window.currentRequestHeaders = requestHeadersText;
 
-                    // cURL Command
                     requestHeadersHtml += '<div style="margin-top: 15px;"><strong style="color: #ff6b6b;">🔧 cURL Command:</strong> <button onclick="copyCurl(this)" style="margin-left: 10px; padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">📋 Copy</button></div>';
                     requestHeadersHtml += `<div style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; word-break: break-all; font-family: monospace; font-size: 12px; overflow-x: auto;"><pre style="margin: 0; white-space: pre-wrap;">${escapeHtml(curlCommand)}</pre></div>`;
 
-                    // Headers đã cấu hình
                     requestHeadersHtml += '<div style="margin-top: 15px;"><strong style="color: #667eea;">📤 Request Headers:</strong></div>';
                     let hasCustomHeaders = false;
                     for (const [key, value] of Object.entries(options.headers)) {
@@ -977,25 +1095,27 @@
                     }
 
                     document.getElementById("requestHeaders").innerHTML = requestHeadersHtml;
-
-                    // Store curl command for copy function
                     window.currentCurlCommand = curlCommand;
                 } catch (error) {
+                    const isCorsError = error.message.includes('CORS') || error.message.includes('Failed to fetch');
+                    
                     document.getElementById("responseInfo").innerHTML = `
                     <div class="error-message">
-                        <strong>Lỗi:</strong> ${error.message}
+                        <strong>${isCorsError ? '⛔ Lỗi CORS' : 'Lỗi'}:</strong> ${error.message}
+                        ${isCorsError ? '<div style="margin-top: 10px;">💡 Xem phần cảnh báo CORS ở trên để biết cách fix!</div>' : ''}
                     </div>
                 `;
                     document.getElementById("responseBody").innerHTML =
-                        `<pre>Không thể gửi request. Vui lòng kiểm tra lại URL và kết nối mạng.
+                        `<pre>Không thể gửi request. ${isCorsError ? 'Đây là lỗi CORS - server không cho phép request từ origin này.' : 'Vui lòng kiểm tra lại URL và kết nối mạng.'}
 
 Một số nguyên nhân có thể:
+${isCorsError ? '- ⛔ Server không có header Access-Control-Allow-Origin' : ''}
+${isCorsError ? '- ⛔ Headers bạn dùng trigger CORS preflight nhưng server không hỗ trợ' : ''}
 - URL không hợp lệ
 - Server không phản hồi
-- CORS policy chặn request (nếu gọi từ domain khác)
 - Kết nối mạng bị gián đoạn</pre>`;
 
-                    // Display request headers even on error - CHỈ HEADERS NGƯỜI DÙNG CẤU HÌNH
+                    // Display request headers even on error
                     const params = getParams();
                     const finalUrl =
                         Object.keys(params).length > 0
@@ -1018,13 +1138,13 @@ Một số nguyên nhân có thể:
                         }
                     }
 
-                    let requestHeadersHtml = '<div style="margin-bottom: 15px; padding: 10px; background: #ffe0e0; border-radius: 6px; font-size: 13px;">';
-                    requestHeadersHtml += '<strong>❌ Request bị lỗi!</strong> Nhưng đây là thông tin request đã được cấu hình để gửi.</div>';
+                    let requestHeadersHtml = `<div style="margin-bottom: 15px; padding: 10px; background: #ffe0e0; border-radius: 6px; font-size: 13px;">
+                        <strong>${isCorsError ? '⛔ CORS Error!' : '❌ Request bị lỗi!'}</strong> Nhưng đây là thông tin request đã được cấu hình để gửi.
+                    </div>`;
 
                     requestHeadersHtml += '<div style="margin-top: 15px;"><strong style="color: #ff6b6b;">🎯 Request URL:</strong></div>';
                     requestHeadersHtml += `<div style="background: #f8f9fa; padding: 10px; border-radius: 4px; word-break: break-all; font-family: monospace;">${method} ${finalUrl}</div>`;
 
-                    // Build request headers text for copy
                     let requestHeadersText = `Request URL: ${method} ${finalUrl}\n\n`;
                     requestHeadersText += `=== Request Headers ===\n`;
 
@@ -1039,9 +1159,7 @@ Một số nguyên nhân có thể:
                         requestHeadersHtml += '<div style="color: #999; font-style: italic;">Không có headers tùy chỉnh</div>';
                     }
 
-                    // Store for copy function
                     window.currentRequestHeaders = requestHeadersText;
-
                     document.getElementById("requestHeaders").innerHTML = requestHeadersHtml;
                 } finally {
                     sendBtn.disabled = false;
@@ -1164,7 +1282,6 @@ Một số nguyên nhân có thể:
                     params: {}
                 };
 
-                // Extract method
                 const methodMatch = curlCommand.match(
                     /-X\s+(\w+)|--request\s+(\w+)/i,
                 );
@@ -1174,7 +1291,6 @@ Một số nguyên nhân có thể:
                     ).toUpperCase();
                 }
 
-                // Extract URL - handle both quoted and unquoted URLs
                 const urlMatch = curlCommand.match(
                     /curl\s+['"]([^'"]+)['"]|curl\s+(\S+)/,
                 );
@@ -1182,12 +1298,10 @@ Một số nguyên nhân có thể:
                     let fullUrl = urlMatch[1] || urlMatch[2];
                     fullUrl = fullUrl.replace(/^['"]|['"]$/g, "");
                     
-                    // Split URL and query params
                     try {
                         const urlObj = new URL(fullUrl);
                         result.url = urlObj.origin + urlObj.pathname;
                         
-                        // Extract query params
                         urlObj.searchParams.forEach((value, key) => {
                             result.params[key] = value;
                         });
@@ -1196,7 +1310,6 @@ Một số nguyên nhân có thể:
                     }
                 }
 
-                // Extract headers
                 const headerRegex = /-H\s+['"]([^:]+):\s*([^'"]+)['"]/g;
                 let headerMatch;
                 while ((headerMatch = headerRegex.exec(curlCommand)) !== null) {
@@ -1204,7 +1317,6 @@ Một số nguyên nhân có thể:
                         headerMatch[2].trim();
                 }
 
-                // Extract data/body
                 const dataMatch = curlCommand.match(
                     /--data-raw\s+['"](.+?)['"]|--data\s+['"](.+?)['"]|-d\s+['"](.+?)['"]/s,
                 );
@@ -1228,19 +1340,16 @@ Một số nguyên nhân có thể:
                 };
 
                 try {
-                    // Extract URL - handle both single and double quotes
                     const urlMatch = fetchCommand.match(
                         /fetch\s*\(\s*["']([^"']+)["']/,
                     );
                     if (urlMatch) {
                         let fullUrl = urlMatch[1];
                         
-                        // Split URL and query params
                         try {
                             const urlObj = new URL(fullUrl);
                             result.url = urlObj.origin + urlObj.pathname;
                             
-                            // Extract query params
                             urlObj.searchParams.forEach((value, key) => {
                                 result.params[key] = value;
                             });
@@ -1249,7 +1358,6 @@ Một số nguyên nhân có thể:
                         }
                     }
 
-                    // Extract method
                     const methodMatch = fetchCommand.match(
                         /["']method["']\s*:\s*["'](\w+)["']/i,
                     );
@@ -1257,13 +1365,11 @@ Một số nguyên nhân có thể:
                         result.method = methodMatch[1].toUpperCase();
                     }
 
-                    // Extract headers - improved parsing for Chrome DevTools format
                     const headersMatch = fetchCommand.match(
                         /["']headers["']\s*:\s*\{([^}]+)\}/s,
                     );
                     if (headersMatch) {
                         const headersStr = headersMatch[1];
-                        // Match both "key": "value" and 'key': 'value'
                         const headerRegex = /["']([^"']+)["']\s*:\s*["']([^"']*)["']/g;
                         let headerMatch;
                         while (
@@ -1273,35 +1379,28 @@ Một số nguyên nhân có thể:
                         }
                     }
 
-                    // Extract body - handle various formats
-                    // Try JSON.stringify format first
                     let bodyMatch = fetchCommand.match(
                         /["']body["']\s*:\s*JSON\.stringify\((.+?)\)\s*[,}]/s,
                     );
                     if (bodyMatch) {
                         try {
-                            // Evaluate the object to get actual JSON
                             result.body = bodyMatch[1].trim();
-                            // Try to parse and re-stringify for formatting
                             const parsed = eval('(' + result.body + ')');
                             result.body = JSON.stringify(parsed, null, 2);
                         } catch (e) {
                             result.body = bodyMatch[1].trim();
                         }
                     } else {
-                        // Try string body format
                         bodyMatch = fetchCommand.match(/["']body["']\s*:\s*["'](.+?)["']/s);
                         if (bodyMatch) {
                             result.body = bodyMatch[1];
-                            // Try to parse and re-stringify if it's JSON
                             try {
                                 const parsed = JSON.parse(result.body);
                                 result.body = JSON.stringify(parsed, null, 2);
                             } catch (e) {
-                                // Keep as is if not valid JSON
+                                // Keep as is
                             }
                         } else {
-                            // Try null or other values
                             bodyMatch = fetchCommand.match(/["']body["']\s*:\s*(null|undefined|[^,}]+)/);
                             if (bodyMatch && bodyMatch[1] !== 'null' && bodyMatch[1] !== 'undefined') {
                                 result.body = bodyMatch[1].trim();
@@ -1327,7 +1426,6 @@ Một số nguyên nhân có thể:
 
                 let parsed;
 
-                // Detect if it's cURL or fetch
                 if (importText.startsWith("curl")) {
                     parsed = parseCurl(importText);
                 } else if (importText.includes("fetch(")) {
@@ -1339,17 +1437,14 @@ Một số nguyên nhân có thể:
                     return;
                 }
 
-                // Populate URL (without query params)
                 if (parsed.url) {
                     document.getElementById("url").value = parsed.url;
                 }
 
-                // Populate method
                 if (parsed.method) {
                     document.getElementById("method").value = parsed.method;
                 }
 
-                // Clear and populate params
                 const paramsContainer = document.getElementById("paramsContainer");
                 paramsContainer.innerHTML = "";
 
@@ -1365,11 +1460,9 @@ Một số nguyên nhân có thể:
                         paramsContainer.appendChild(row);
                     }
                 } else {
-                    // Add one empty row if no params
                     addParamRow();
                 }
 
-                // Clear and populate headers
                 const headersContainer = document.getElementById("headersContainer");
                 headersContainer.innerHTML = "";
 
@@ -1378,25 +1471,21 @@ Một số nguyên nhân có thể:
                         const row = document.createElement("div");
                         row.className = "header-row";
                         row.innerHTML = `
-                        <input type="text" placeholder="Header Key" class="header-key" value="${escapeHtml(key)}">
-                        <input type="text" placeholder="Header Value" class="header-value" value="${escapeHtml(value)}">
-                        <button class="remove-btn" onclick="removeHeaderRow(this)">Xóa</button>
+                        <input type="text" placeholder="Header Key" class="header-key" value="${escapeHtml(key)}" oninput="checkCorsWarnings()">
+                        <input type="text" placeholder="Header Value" class="header-value" value="${escapeHtml(value)}" oninput="checkCorsWarnings()">
+                        <button class="remove-btn" onclick="removeHeaderRow(this); checkCorsWarnings();">Xóa</button>
                     `;
                         headersContainer.appendChild(row);
                     }
                 } else {
-                    // Add one empty row if no headers
                     addHeaderRow();
                 }
 
-                // Populate body
                 if (parsed.body) {
                     document.getElementById("bodyContent").value = parsed.body;
                 }
 
-                // Switch to appropriate tab
                 if (parsed.body) {
-                    // Switch to body tab
                     const tabs = document.querySelectorAll(".tabs .tab");
                     tabs.forEach(t => t.classList.remove("active"));
                     tabs[2].classList.add("active");
@@ -1405,7 +1494,6 @@ Một số nguyên nhân có thể:
                     contents.forEach(c => c.classList.remove("active"));
                     document.getElementById("body").classList.add("active");
                 } else if (Object.keys(parsed.headers).length > 0) {
-                    // Switch to headers tab
                     const tabs = document.querySelectorAll(".tabs .tab");
                     tabs.forEach(t => t.classList.remove("active"));
                     tabs[1].classList.add("active");
@@ -1413,15 +1501,11 @@ Một số nguyên nhân có thể:
                     const contents = document.querySelectorAll(".tab-content");
                     contents.forEach(c => c.classList.remove("active"));
                     document.getElementById("headers").classList.add("active");
-                } else if (Object.keys(parsed.params).length > 0) {
-                    // Stay on params tab (already active)
                 }
 
-                // Hide import section
                 document.getElementById("importSection").style.display = "none";
                 document.getElementById("toggleImportBtn").textContent = "Hiện";
 
-                // Show success message
                 const importInfo = [];
                 if (Object.keys(parsed.params).length > 0) {
                     importInfo.push(`${Object.keys(parsed.params).length} params`);
@@ -1434,9 +1518,11 @@ Một số nguyên nhân có thể:
                 }
                 
                 alert(`✓ Import thành công!\n${parsed.method} ${parsed.url}\n${importInfo.join(', ')}`);
+                
+                // Check CORS after import
+                checkCorsWarnings();
             }
 
-            // Allow Enter key to send request
             document
                 .getElementById("url")
                 .addEventListener("keypress", function (e) {
@@ -1445,7 +1531,6 @@ Một số nguyên nhân có thể:
                     }
                 });
 
-            // Set default example URL
             document.getElementById("url").value =
                 "https://jsonplaceholder.typicode.com/posts/1";
         </script>
